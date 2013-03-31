@@ -37,9 +37,9 @@ from types import *
 import threading, subprocess
 import cPickle as pickle
 
-from email.MIMEText import MIMEText
-from email.Header import Header
-from email.Utils import parseaddr, formataddr
+from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import parseaddr, formataddr
              
 import feedparser
 feedparser.USER_AGENT = "rss2email/"+__version__+ " +https://github.com/rcarmo/rss2email"
