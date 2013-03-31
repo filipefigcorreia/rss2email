@@ -38,8 +38,11 @@ import threading, subprocess
 import cPickle as pickle
 
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
 from email.header import Header
 from email.utils import parseaddr, formataddr
+from email import Encoders
              
 import feedparser
 feedparser.USER_AGENT = "rss2email/"+__version__+ " +https://github.com/rcarmo/rss2email"
@@ -59,7 +62,7 @@ h2t.BODY_WIDTH = BODY_WIDTH
 html2text = h2t.html2text
 
 
-def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=None, mailserver=None, folder=None):
+def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=None, attachments=None, mailserver=None, folder=None):
     """Send an email.
     
     All arguments should be Unicode strings (plain ASCII works as well).
@@ -101,7 +104,7 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
     recipient_addr = recipient_addr.encode('ascii')
     
     # Create the message ('plain' stands for Content-Type: text/plain)
-    msg = MIMEText(body.encode(body_charset), contenttype, body_charset)
+    msg = MIMEMultipart()
     if IMAP_OVERRIDE_TO:
         msg['To'] = IMAP_OVERRIDE_TO
     else:
@@ -118,6 +121,16 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
         msg['From'] = extraheaders['X-MUNGED-FROM']
     else:
         msg['From'] = fromhdr
+
+    msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
+
+    for ctype, cid, data in attachments:
+        part = MIMEBase(*ctype.split("/"))
+        part.set_payload(data)
+        Encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment; filename="%s"' % (cid,))
+        part.add_header('Content-ID', '<%s>' % (cid,))
+        msg.attach(part)
 
     msg_as_string = msg.as_string()
 
@@ -689,6 +702,7 @@ def run(num=None):
                     entrycontent = getContent(entry, HTMLOK=HTML_MAIL)
                     contenttype = 'plain'
                     content = ''
+                    attachments = []
                     if THREAD_ON_TAGS and len(tagline):
                         extraheaders['References'] += ''.join([' <%s>' % hashlib.sha1(t.strip().encode('utf-8')).hexdigest() for t in tagline.split(',')])
                     if USE_CSS_STYLING and HTML_MAIL:
@@ -707,7 +721,7 @@ def run(num=None):
                             parser = Parser()
                             parser.feed(body)
                             extraheaders['References'] += ''.join([' <%s>' % hashlib.sha1(h.strip().encode('utf-8')).hexdigest() for h in parser.attrs])
-                        if INLINE_IMAGES_DATA_URI:
+                        if IMAGES_AS_ATTACHMENTS or INLINE_IMAGES_DATA_URI:
                             parser = Parser(tag='img', attr='src')
                             parser.feed(body)
                             for src in parser.attrs:
@@ -717,8 +731,13 @@ def run(num=None):
                                     if hasattr(img, 'headers'):
                                         headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
                                         ctype = headers.get('content-type', None)
-                                        if ctype and INLINE_IMAGES_DATA_URI:
-                                            body = body.replace(src,'data:%s;base64,%s' % (ctype, base64.b64encode(data)))
+                                        if ctype:
+                                            if IMAGES_AS_ATTACHMENTS:
+                                                cid = "%d_%s" % (len(attachments), urlparse.urlsplit(img.url).path.split('/')[-1])
+                                                attachments.append((ctype, cid, data))
+                                                body = body.replace(src, 'cid:%s' % (cid,))
+                                            elif INLINE_IMAGES_DATA_URI:
+                                                body = body.replace(src,'data:%s;base64,%s' % (ctype, base64.b64encode(data)))
                                 except:
                                     print >>warn, "Could not load image: %s" % src
                                     pass
@@ -771,7 +790,7 @@ def run(num=None):
                                     if ('rel' in extralink) and extralink['rel'] == u'via':
                                         content += '<a href="'+extralink['href']+'">Via: '+extralink['title']+'</a>\n'
 
-                    mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, mailserver, f.folder)
+                    mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, attachments, mailserver, f.folder)
             
                     f.seen[frameid] = id
                     
@@ -929,7 +948,7 @@ if __name__ == '__main__':
         
         if action == "run": 
             if args and args[0] == "--no-send":
-                def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=None, mailserver=None, folder=None):
+                def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=None, attachments=None, mailserver=None, folder=None):
                     if VERBOSE: print 'Not sending:', unu(subject)
 
             if args and args[-1].isdigit(): run(int(args[-1]))

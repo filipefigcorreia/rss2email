@@ -72,6 +72,9 @@ IMAP_OVERRIDE_TO = 'Me <me@localhost>'
 THREAD_ON_TAGS = 1
 THREAD_ON_LINKS = 1
 
+# Includes images as attachments. Takes precedence to INLINE_IMAGES_DATA_URI.
+IMAGES_AS_ATTACHMENTS = 0
+
 # Include inline images as a data: URI (not supported in MUAs like the mobile Gmail app, but works great on iOS and Mac)
 INLINE_IMAGES_DATA_URI = 0
 
