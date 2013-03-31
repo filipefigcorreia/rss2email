@@ -745,8 +745,7 @@ def run(num=None):
                     else:   
                         if ishtml(entrycontent):
                             contenttype = 'html'
-                            content = "<html>\n" 
-                            content = ("<html><body>\n\n" + 
+                            content = ("<html><body>\n\n" +
                                        '<h1><a href="'+link+'">'+subjecthdr+'</a></h1>\n\n' +
                                        entrycontent[1].strip() + # drop type tag (HACK: bad abstraction)
                                        '<p>URL: <a href="'+link+'">'+link+'</a></p>' )
