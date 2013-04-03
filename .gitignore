@@ -33,3 +33,12 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# Pycharm
+.idea
+
+# OSX
+.DS_Store
+
+# The config file
+config.py
