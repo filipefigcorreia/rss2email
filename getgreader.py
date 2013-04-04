@@ -33,7 +33,7 @@ def import_history(emailaddress, username, password):
     userinfo = reader.getUserInfo()
     userId = userinfo['userId']
 
-    if VERBOSE: print "Importing history from Google Reader (account: {0}, userId: {1}, signup@:{2})".format(
+    if VERBOSE: print "Connected to Google Reader (account: {0}, userId: {1}, signedup@:{2})".format(
         userinfo['userEmail'],
         userinfo['userId'],
         reader.getUserSignupDate())
