@@ -504,6 +504,10 @@ def add(*args):
     for url in urls: feeds.append(Feed(url, to, folder))
     unlock(feeds, feedfileObject)
 
+def create_feedfile(email=None):
+    if not email is None: d=[email]
+    else: d = []
+    pickle.dump(d, open(feedfile, 'w'))
 
 ### HTML Parser for grabbing links and images ###
 
@@ -962,10 +966,10 @@ if __name__ == '__main__':
 
         elif action == "add": add(*args)
 
-        elif action == "new": 
-            if len(args) == 1: d = [args[0]]
-            else: d = []
-            pickle.dump(d, open(feedfile, 'w'))
+        elif action == "new":
+            if len(args) == 1: email = args[0]
+            else: email = None
+            create_feedfile(email)
 
         elif action == "list": list()
 
