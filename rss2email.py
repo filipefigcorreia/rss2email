@@ -379,18 +379,29 @@ def getName(r, entry):
     return name
 
 
-def getMungedFrom(r):
+def getMungedFrom(r, entry):
     """Generate a better From."""
 
-    feed = r.feed
     if hasattr(r, "url") and r.url in OVERRIDE_FROM.keys():
         return OVERRIDE_FROM[r.url]
-    
-    name = feed.get('title', 'unknown').lower()
+
+    if hasattr(entry, "source"): # item source takes precedence over feed source
+        source = entry.source
+        url = entry.source.get("link")
+    else:
+        source = r.feed
+        url = r.url
+
+    hparser = HTMLParser()
+    title_long = source.get("title", 'Unnamed Feed')
+    title_long = hparser.unescape(title_long)
+    title_long = title_long.replace('"', '`').replace("'", '`')
+    title_short = source.get("title", 'unknown').lower()
+    title_short = hparser.unescape(title_short)
     pattern = re.compile('[\W_]+',re.UNICODE)
-    re.sub(pattern, '', name)
-    name = "%s <%s@%s>" % (feed.get('title','Unnamed Feed'), name.replace(' ','_'), urlparse.urlparse(r.url).netloc)
-    return name
+    title_short = re.sub(pattern, '_', title_short).strip("_")
+
+    return "{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
 
 
 def validateEmail(email, planb):
@@ -701,7 +712,7 @@ def process_feeds(feeds, num=None):
 
                 extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr, 'X-RSS-Feed': f.url,
                                 'Message-ID': '<%s>' % hashlib.sha1(id.encode('utf-8')).hexdigest(), 'X-RSS-ID': id,
-                                'X-RSS-URL': link, 'X-RSS-TAGS': tagline, 'X-MUNGED-FROM': getMungedFrom(r),
+                                'X-RSS-URL': link, 'X-RSS-TAGS': tagline, 'X-MUNGED-FROM': getMungedFrom(r, entry),
                                 'References': ''}
                 if BONUS_HEADER != '':
                     for hdr in BONUS_HEADER.strip().splitlines():
