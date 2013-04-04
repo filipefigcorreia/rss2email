@@ -14,6 +14,7 @@ Usage:
   unpause n
   opmlexport
   opmlimport filename
+  greaderimport emailaddress googleusername
 """
 __version__ = "2.71-rcarmo"
 __author__ = "Lindsey Smith (lindsey@allthingsrss.com)"
@@ -559,7 +560,11 @@ def run(num=None):
                 if VERBOSE: print >>warn, 'I: Processing [%d] "%s"' % (feednum, f.url)
                 r = {}
                 try:
-                    r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
+                    if hasattr(f, 'data'):
+                        r = timelimit(FEED_TIMEOUT, parse)(f.data, None, None)
+                        r.url = f.url
+                    else:
+                        r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
                 except TimeoutError:
                     print >>warn, 'W: feed [%d] "%s" timed out' % (feednum, f.url)
                     continue
@@ -900,6 +905,10 @@ def opmlimport(importfile):
             
     unlock(feeds, feedfileObject)
 
+def greaderimport(emailaddress, username, password):
+    from getgreader import import_history
+    import_history(emailaddress, username, password)
+
 def delete(n):
     feeds, feedfileObject = load()
     if (n == 0) and (feeds and isstr(feeds[0])):
@@ -1000,6 +1009,15 @@ if __name__ == '__main__':
             if not args:
                 raise InputError, "OPML import '%s' requires a filename argument" % action
             opmlimport(args[0])
+
+        elif action == "greaderimport":
+            if not args or not len(args) == 2:
+                raise InputError, "GReader import '%s' requires an email and a username arguments" % action
+            emailaddress = args[0]
+            username = args[1]
+            import getpass
+            password = getpass.getpass("Please enter password for '{0}':".format(username))
+            greaderimport(emailaddress, username, password)
 
         else:
             raise InputError, "Invalid action"
