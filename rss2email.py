@@ -33,6 +33,7 @@ import socket, urllib2, urlparse, imaplib, smtplib
 urllib2.install_opener(urllib2.build_opener())
 import string, csv, StringIO
 import hashlib, base64
+import unicodedata
 import traceback, types
 from types import *
 import threading, subprocess
@@ -123,7 +124,10 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
     else:
         msg['From'] = fromhdr
 
-    msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
+    try:
+        msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
+    except UnicodeDecodeError, e:
+        pass
 
     for ctype, cid, data in attachments:
         part = MIMEBase(*ctype.split("/"))
@@ -396,12 +400,14 @@ def getMungedFrom(r, entry):
     title_long = source.get("title", 'Unnamed Feed')
     title_long = hparser.unescape(title_long)
     title_long = title_long.replace('"', '`').replace("'", '`')
-    title_short = source.get("title", 'unknown').lower()
-    title_short = hparser.unescape(title_short)
+    title_short = source.get("title", 'unknown')
+    title_short = hparser.unescape(title_short).lower()
+    title_short = unicodedata.normalize('NFKD', title_short).encode('ascii','ignore')
     pattern = re.compile('[\W_]+',re.UNICODE)
     title_short = re.sub(pattern, '_', title_short).strip("_")
 
-    return "{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
+    from_txt = u"{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
+    return from_txt.encode("utf-8")
 
 
 def validateEmail(email, planb):
@@ -726,12 +732,8 @@ def process_feeds(default_to, feeds):
                         [' <%s>' % hashlib.sha1(t.strip().encode('utf-8')).hexdigest() for t in tagline.split(',')])
                 if USE_CSS_STYLING and HTML_MAIL:
                     contenttype = 'html'
-                    content = "<html>\n"
-                    content += '<head><meta http-equiv="Content-Type" content="text/html"><style>' + STYLE_SHEET + '</style></head>\n'
-                    content += '<body style="word-wrap: break-word; -webkit-nbsp-mode: space; -webkit-line-break: after-white-space;">\n'
-                    content += '<div id="entry">\n'
-                    content += '<h1 class="header"'
-                    content += '><a href="' + link + '">' + subjecthdr + '</a></h1>\n'
+                    current_dir = os.path.dirname(sys.modules[__name__].__file__)
+                    template = open(os.path.join(current_dir, "template.html"), "r").read().decode("utf-8")
                     if ishtml(entrycontent):
                         body = entrycontent[1].strip()
                     else:
@@ -763,17 +765,13 @@ def process_feeds(default_to, feeds):
                             except:
                                 print >> warn, "Could not load image: %s" % src
                                 pass
-                    if body != '':
-                        content += '<div id="body">\n' + body + '</div>\n'
-                    content += '\n<p class="footer">URL: <a href="' + link + '">' + link + '</a>'
+                    extrafooter = u''
                     if hasattr(entry, 'enclosures'):
                         for enclosure in entry.enclosures:
                             if (hasattr(enclosure, 'url') and enclosure.url != ""):
-                                content += (
-                                    '<br/>Enclosure: <a href="' + enclosure.url + '">' + enclosure.url + "</a>\n")
+                                extrafooter += u'<br/>Enclosure: <a href="{0}">{0}</a>\n'.format(enclosure.url)
                             if (hasattr(enclosure, 'src') and enclosure.src != ""):
-                                content += (
-                                    '<br/>Enclosure: <a href="' + enclosure.src + '">' + enclosure.src + '</a><br/><img src="' + enclosure.src + '"\n')
+                                extrafooter += u'<br/>Enclosure: <a href="{0}">{0}</a><br/><img src="{0}"\n'.format(enclosure.src)
                     if 'links' in entry:
                         for extralink in entry.links:
                             if ('rel' in extralink) and extralink['rel'] == u'via':
@@ -783,40 +781,59 @@ def process_feeds(default_to, feeds):
                                 viatitle = extraurl
                                 if ('title' in extralink):
                                     viatitle = extralink['title']
-                                content += '<br/>Via: <a href="' + extraurl + '">' + viatitle + '</a>\n'
-                    content += '</p></div>\n'
-                    content += "\n\n</body></html>"
+                                extrafooter += u'<br/>Via: <a href="{0}">{1}</a>\n'.format(extraurl, viatitle)
+
+                    try:
+                        content = template.format(
+                            stylesheet=STYLE_SHEET,
+                            url=link,
+                            title=subjecthdr,
+                            body=body,
+                            extrafooter=extrafooter)
+                    except UnicodeEncodeError, e:
+                        pass
                 else:
                     if ishtml(entrycontent):
                         contenttype = 'html'
-                        content = ("<html><body>\n\n" +
-                                   '<h1><a href="' + link + '">' + subjecthdr + '</a></h1>\n\n' +
-                                   entrycontent[1].strip() + # drop type tag (HACK: bad abstraction)
-                                   '<p>URL: <a href="' + link + '">' + link + '</a></p>' )
+                        current_dir = os.path.dirname(sys.modules[__name__].__file__)
+                        template = open(os.path.join(current_dir, "template_nocss.html"), "r").read().decode("utf-8")
 
+                        extrafooter = ''
                         if hasattr(entry, 'enclosures'):
                             for enclosure in entry.enclosures:
                                 if enclosure.url != "":
-                                    content += (
-                                        'Enclosure: <a href="' + enclosure.url + '">' + enclosure.url + "</a><br/>\n")
+                                    extrafooter += u'<br/>Enclosure: <a href="{0}">{0}</a>\n'.format(enclosure.url)
                         if 'links' in entry:
                             for extralink in entry.links:
                                 if ('rel' in extralink) and extralink['rel'] == u'via':
-                                    content += 'Via: <a href="' + extralink['href'] + '">' + extralink[
-                                        'title'] + '</a><br/>\n'
+                                    extrafooter += u'<br/>Via: <a href="{0}">{1}</a>\n'.format(
+                                        extralink['href'], extralink['title'])
 
-                        content += ("\n</body></html>")
+                        content = template.format(
+                            url=link,
+                            title=subjecthdr,
+                            body=entrycontent[1].strip(), # drop type tag (HACK: bad abstraction)
+                            extrafooter=extrafooter)
                     else:
-                        content = entrycontent.strip() + "\n\nURL: " + link
+                        current_dir = os.path.dirname(sys.modules[__name__].__file__)
+                        template = open(os.path.join(current_dir, "template.txt"), "r").read().decode("utf-8")
+
+                        extrafooter = ''
                         if hasattr(entry, 'enclosures'):
                             for enclosure in entry.enclosures:
                                 if enclosure.url != "":
-                                    content += ('\nEnclosure: ' + enclosure.url + "\n")
+                                    extrafooter += u'\nEnclosure: {0}'.format(enclosure.url)
                         if 'links' in entry:
                             for extralink in entry.links:
                                 if ('rel' in extralink) and extralink['rel'] == u'via':
-                                    content += '<a href="' + extralink['href'] + '">Via: ' + extralink[
-                                        'title'] + '</a>\n'
+                                    extrafooter += u'\nVia: {0} ({1})\n'.format(
+                                        extralink['title'], extralink['href'])
+
+                        content = template.format(
+                            url=link,
+                            body=entrycontent.strip(),
+                            extrafooter=extrafooter
+                        )
 
                 mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, attachments,
                                   mailserver, folder=f.folder)
