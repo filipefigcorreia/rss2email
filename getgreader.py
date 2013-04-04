@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+from os import path, makedirs, listdir
 import re
+import uuid
 import urllib
 import requests
+import cPickle as pickle
 from libgreader import GoogleReader, ClientAuthMethod
 from rss2email import Feed, process_feeds
 try:
@@ -27,6 +30,32 @@ def get_feed_data(gr_feed_url, auth):
     else:
         return res.text, None
 
+class FeedCache(object):
+    def __init__(self):
+        # TODO: make this path a config option
+        self.cache_path = path.join(path.expanduser("~"), ".rss2email/greaderimport_cache/")
+        if not path.isdir(self.cache_path):
+            makedirs(self.cache_path)
+
+    def _get_cache_filenames(self):
+        if not path.isdir(self.cache_path):
+            return []
+        filenames = [path.join(self.cache_path, name) for name in listdir(self.cache_path)]
+        return [filename for filename in filenames if path.isfile(filename)]
+
+    def get_count(self):
+        return len(self._get_cache_filenames())
+
+    def get_items(self):
+        for filename in self._get_cache_filenames():
+            yield pickle.load(open(filename, 'r'))
+
+    def add(self, feed):
+        while True: # generate short uuid for filename
+            rand_filename = path.join(self.cache_path, str(uuid.uuid4())[0:8])
+            if not path.exists(rand_filename): break
+        pickle.dump(feed, open(rand_filename, 'w'))
+
 def import_history(emailaddress, username, password):
     auth = ClientAuthMethod(username, password)
     reader = GoogleReader(auth)
@@ -43,26 +72,29 @@ def import_history(emailaddress, username, password):
     if VERBOSE: print "Found {0} categories.".format(len(cats))
 
     cat_url_template = "http://www.google.com/reader/atom/user/{0}/label/{1}"
-    cat_url_params = {'n': 250}
-    feeds = []
+    cat_url_params = {'n': 250} # TODO: make the batch size a config option
 
-    for cat in cats:
-        continuation_code = None
-        url = cat_url_template.format(userId, cat)
-        if VERBOSE: print "Importing category '{0}' (url: {1})".format(cat, url)
-        while True:
-            if VERBOSE: print ".",
-            if continuation_code:
-                full_params = dict(cat_url_params, **{'c':continuation_code})
-            else: full_params = cat_url_params
+    cache = FeedCache()
+    feed_parts_count = cache.get_count()
+    if feed_parts_count == 0:
+        if VERBOSE: print "Caching feed items..."
+        for cat in cats:
+            continuation_code = None
+            url = cat_url_template.format(userId, cat)
+            if VERBOSE: print "Fetching feed items for category '{0}' (url: {1})".format(cat, url)
+            while True:
+                if VERBOSE: print ".",
+                if continuation_code:
+                    full_params = dict(cat_url_params, **{'c':continuation_code})
+                else: full_params = cat_url_params
 
-            full_url = url + "?" + urllib.urlencode(full_params)
-            data, continuation_code = get_feed_data(full_url, auth)
-            cache_feed(RetrievedFeed(data, full_url, None, cat))
-            if not continuation_code:
-                print ""
-                break
-    process_feeds([emailaddress] + feeds)
+                full_url = url + "?" + urllib.urlencode(full_params)
+                data, continuation_code = get_feed_data(full_url, auth)
+                cache.add(RetrievedFeed(data, full_url, None, cat))
+                if not continuation_code:
+                    if VERBOSE: print ""
+                    break
 
-
-    if VERBOSE: print ""
+    if VERBOSE: print "Loading {0} feed parts from cache".format(cache.get_count())
+    for feed in cache.get_items():
+        process_feeds(emailaddress, [feed])

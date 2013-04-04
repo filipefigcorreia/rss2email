@@ -550,18 +550,13 @@ def uid(data):
     return m.group('uid')
 
 
-def process_feeds(feeds, num=None):
+def process_feeds(default_to, feeds):
+    """
+    Parses the feeds, builds the email messages, and sends them.
+    """
     mailserver = None
-    # We store the default to address as the first item in the feeds list.
-    # Here we take it out and save it for later.
-    default_to = ""
-    if feeds and isstr(feeds[0]):
-        default_to = feeds[0]; ifeeds = feeds[1:]
-    else:
-        ifeeds = feeds
-    if num: ifeeds = [feeds[num]]
     feednum = 0
-    for f in ifeeds:
+    for f in feeds:
         try:
             feednum += 1
             if not f.active: continue
@@ -850,7 +845,16 @@ def run(num=None):
     feeds, feedfileObject = load()
     mailserver = None
     try:
-        mailserver = process_feeds(feeds, num)
+        # We store the default to address as the first item in the feeds list.
+        # Here we take it out and save it for later.
+        default_to = ""
+        if feeds and isstr(feeds[0]):
+            default_to = feeds[0]; ifeeds = feeds[1:]
+        else:
+            ifeeds = feeds
+        if num: ifeeds = [feeds[num]]
+
+        mailserver = process_feeds(default_to, ifeeds)
     finally:
         unlock(feeds, feedfileObject)
         if mailserver:
