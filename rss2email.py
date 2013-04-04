@@ -539,287 +539,308 @@ def uid(data):
     return m.group('uid')
 
 
+def process_feeds(feeds, num=None):
+    mailserver = None
+    # We store the default to address as the first item in the feeds list.
+    # Here we take it out and save it for later.
+    default_to = ""
+    if feeds and isstr(feeds[0]):
+        default_to = feeds[0]; ifeeds = feeds[1:]
+    else:
+        ifeeds = feeds
+    if num: ifeeds = [feeds[num]]
+    feednum = 0
+    for f in ifeeds:
+        try:
+            feednum += 1
+            if not f.active: continue
+
+            if VERBOSE: print >> warn, 'I: Processing [%d] "%s"' % (feednum, f.url)
+            r = {}
+            try:
+                if hasattr(f, 'data'):
+                    r = timelimit(FEED_TIMEOUT, parse)(f.data, None, None)
+                    r.url = f.url
+                else:
+                    r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
+            except TimeoutError:
+                print >> warn, 'W: feed [%d] "%s" timed out' % (feednum, f.url)
+                continue
+
+            # Handle various status conditions, as required
+            if 'status' in r:
+                if r.status == 301:
+                    f.url = r['url']
+                elif r.status == 410:
+                    print >> warn, "W: feed gone; deleting", f.url
+                    feeds.remove(f)
+                    continue
+
+            http_status = r.get('status', 200)
+            if VERBOSE > 1: print >> warn, "I: http status", http_status
+            http_headers = r.get('headers', {
+                'content-type': 'application/rss+xml',
+                'content-length': '1'})
+            exc_type = r.get("bozo_exception", Exception()).__class__
+            if http_status != 304 and not r.entries and not r.get('version', ''):
+                if http_status not in [200, 302]:
+                    print >> warn, "W: error %d [%d] %s" % (http_status, feednum, f.url)
+
+                elif contains(http_headers.get('content-type', 'rss'), 'html'):
+                    print >> warn, "W: looks like HTML [%d] %s" % (feednum, f.url)
+
+                elif http_headers.get('content-length', '1') == '0':
+                    print >> warn, "W: empty page [%d] %s" % (feednum, f.url)
+
+                elif hasattr(socket, 'timeout') and exc_type == socket.timeout:
+                    print >> warn, "W: timed out on [%d] %s" % (feednum, f.url)
+
+                elif exc_type == IOError:
+                    print >> warn, 'W: "%s" [%d] %s' % (r.bozo_exception, feednum, f.url)
+
+                elif hasattr(feedparser, 'zlib') and exc_type == feedparser.zlib.error:
+                    print >> warn, "W: broken compression [%d] %s" % (feednum, f.url)
+
+                elif exc_type in socket_errors:
+                    exc_reason = r.bozo_exception.args[1]
+                    print >> warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
+
+                elif exc_type == urllib2.URLError:
+                    if r.bozo_exception.reason.__class__ in socket_errors:
+                        exc_reason = r.bozo_exception.reason.args[1]
+                    else:
+                        exc_reason = r.bozo_exception.reason
+                    print >> warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
+
+                elif exc_type == AttributeError:
+                    print >> warn, "W: %s [%d] %s" % (r.bozo_exception, feednum, f.url)
+
+                elif exc_type == KeyboardInterrupt:
+                    raise r.bozo_exception
+
+                elif r.bozo:
+                    print >> warn, 'E: error in [%d] "%s" feed (%s)' % (
+                        feednum, f.url, r.get("bozo_exception", "can't process"))
+
+                else:
+                    print >> warn, "=== rss2email encountered a problem with this feed ==="
+                    print >> warn, "=== See the rss2email FAQ at http://www.allthingsrss.com/rss2email/ for assistance ==="
+                    print >> warn, "=== If this occurs repeatedly, send this to lindsey@allthingsrss.com ==="
+                    print >> warn, "E:", r.get("bozo_exception", "can't process"), f.url
+                    print >> warn, r
+                    print >> warn, "rss2email", __version__
+                    print >> warn, "feedparser", feedparser.__version__
+                    print >> warn, "html2text", h2t.__version__
+                    print >> warn, "Python", sys.version
+                    print >> warn, "=== END HERE ==="
+                continue
+
+            r.entries.reverse()
+
+            for entry in r.entries:
+                id = getID(entry)
+
+                # If TRUST_GUID isn't set, we get back hashes of the content.
+                # Instead of letting these run wild, we put them in context
+                # by associating them with the actual ID (if it exists).
+
+                frameid = entry.get('id')
+                if not (frameid): frameid = id
+                if type(frameid) is DictType:
+                    frameid = frameid.values()[0]
+
+                # If this item's ID is in our database
+                # then it's already been sent
+                # and we don't need to do anything more.
+
+                if frameid in f.seen:
+                    if f.seen[frameid] == id: continue
+
+                if not (f.to or default_to):
+                    print "No default email address defined. Please run 'r2e email emailaddress'"
+                    print "Ignoring feed %s" % f.url
+                    break
+
+                if 'title_detail' in entry and entry.title_detail:
+                    title = entry.title_detail.value
+                    if contains(entry.title_detail.type, 'html'):
+                        title = html2text(title)
+                else:
+                    title = getContent(entry)[:70]
+
+                title = title.replace("\n", " ").strip()
+
+                datetime = time.gmtime()
+
+                if DATE_HEADER:
+                    for datetype in DATE_HEADER_ORDER:
+                        kind = datetype + "_parsed"
+                        if kind in entry and entry[kind]: datetime = entry[kind]
+
+                link = entry.get('link', "")
+
+                from_addr = getEmail(r, entry)
+
+                name = h2t.unescape(getName(r, entry))
+                fromhdr = formataddr((name, from_addr,))
+                tohdr = (f.to or default_to)
+                subjecthdr = title
+                datehdr = time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime)
+                useragenthdr = "rss2email"
+
+                # Add post tags, if available
+                tagline = ""
+                if 'tags' in entry:
+                    tags = entry.get('tags')
+                    taglist = []
+                    if tags:
+                        for tag in tags:
+                            taglist.append(tag['term'])
+                    if taglist:
+                        tagline = ",".join(taglist)
+
+                extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr, 'X-RSS-Feed': f.url,
+                                'Message-ID': '<%s>' % hashlib.sha1(id.encode('utf-8')).hexdigest(), 'X-RSS-ID': id,
+                                'X-RSS-URL': link, 'X-RSS-TAGS': tagline, 'X-MUNGED-FROM': getMungedFrom(r),
+                                'References': ''}
+                if BONUS_HEADER != '':
+                    for hdr in BONUS_HEADER.strip().splitlines():
+                        pos = hdr.strip().find(':')
+                        if pos > 0:
+                            extraheaders[hdr[:pos]] = hdr[pos + 1:].strip()
+                        else:
+                            print >> warn, "W: malformed BONUS HEADER", BONUS_HEADER
+
+                entrycontent = getContent(entry, HTMLOK=HTML_MAIL)
+                contenttype = 'plain'
+                content = ''
+                attachments = []
+                if THREAD_ON_TAGS and len(tagline):
+                    extraheaders['References'] += ''.join(
+                        [' <%s>' % hashlib.sha1(t.strip().encode('utf-8')).hexdigest() for t in tagline.split(',')])
+                if USE_CSS_STYLING and HTML_MAIL:
+                    contenttype = 'html'
+                    content = "<html>\n"
+                    content += '<head><meta http-equiv="Content-Type" content="text/html"><style>' + STYLE_SHEET + '</style></head>\n'
+                    content += '<body style="word-wrap: break-word; -webkit-nbsp-mode: space; -webkit-line-break: after-white-space;">\n'
+                    content += '<div id="entry">\n'
+                    content += '<h1 class="header"'
+                    content += '><a href="' + link + '">' + subjecthdr + '</a></h1>\n'
+                    if ishtml(entrycontent):
+                        body = entrycontent[1].strip()
+                    else:
+                        body = entrycontent.strip()
+                    if THREAD_ON_LINKS:
+                        parser = Parser()
+                        parser.feed(body)
+                        extraheaders['References'] += ''.join(
+                            [' <%s>' % hashlib.sha1(h.strip().encode('utf-8')).hexdigest() for h in parser.attrs])
+                    if IMAGES_AS_ATTACHMENTS or INLINE_IMAGES_DATA_URI:
+                        parser = Parser(tag='img', attr='src')
+                        parser.feed(body)
+                        for src in parser.attrs:
+                            try:
+                                img = feedparser._open_resource(src, None, None, feedparser.USER_AGENT, link, [], {})
+                                data = img.read()
+                                if hasattr(img, 'headers'):
+                                    headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
+                                    ctype = headers.get('content-type', None)
+                                    if ctype:
+                                        if IMAGES_AS_ATTACHMENTS:
+                                            cid = "%d_%s" % (
+                                                len(attachments), urlparse.urlsplit(img.url).path.split('/')[-1])
+                                            attachments.append((ctype, cid, data))
+                                            body = body.replace(src, 'cid:%s' % (cid,))
+                                        elif INLINE_IMAGES_DATA_URI:
+                                            body = body.replace(src,
+                                                                'data:%s;base64,%s' % (ctype, base64.b64encode(data)))
+                            except:
+                                print >> warn, "Could not load image: %s" % src
+                                pass
+                    if body != '':
+                        content += '<div id="body">\n' + body + '</div>\n'
+                    content += '\n<p class="footer">URL: <a href="' + link + '">' + link + '</a>'
+                    if hasattr(entry, 'enclosures'):
+                        for enclosure in entry.enclosures:
+                            if (hasattr(enclosure, 'url') and enclosure.url != ""):
+                                content += (
+                                    '<br/>Enclosure: <a href="' + enclosure.url + '">' + enclosure.url + "</a>\n")
+                            if (hasattr(enclosure, 'src') and enclosure.src != ""):
+                                content += (
+                                    '<br/>Enclosure: <a href="' + enclosure.src + '">' + enclosure.src + '</a><br/><img src="' + enclosure.src + '"\n')
+                    if 'links' in entry:
+                        for extralink in entry.links:
+                            if ('rel' in extralink) and extralink['rel'] == u'via':
+                                extraurl = extralink['href']
+                                extraurl = extraurl.replace('http://www.google.com/reader/public/atom/',
+                                                            'http://www.google.com/reader/view/')
+                                viatitle = extraurl
+                                if ('title' in extralink):
+                                    viatitle = extralink['title']
+                                content += '<br/>Via: <a href="' + extraurl + '">' + viatitle + '</a>\n'
+                    content += '</p></div>\n'
+                    content += "\n\n</body></html>"
+                else:
+                    if ishtml(entrycontent):
+                        contenttype = 'html'
+                        content = ("<html><body>\n\n" +
+                                   '<h1><a href="' + link + '">' + subjecthdr + '</a></h1>\n\n' +
+                                   entrycontent[1].strip() + # drop type tag (HACK: bad abstraction)
+                                   '<p>URL: <a href="' + link + '">' + link + '</a></p>' )
+
+                        if hasattr(entry, 'enclosures'):
+                            for enclosure in entry.enclosures:
+                                if enclosure.url != "":
+                                    content += (
+                                        'Enclosure: <a href="' + enclosure.url + '">' + enclosure.url + "</a><br/>\n")
+                        if 'links' in entry:
+                            for extralink in entry.links:
+                                if ('rel' in extralink) and extralink['rel'] == u'via':
+                                    content += 'Via: <a href="' + extralink['href'] + '">' + extralink[
+                                        'title'] + '</a><br/>\n'
+
+                        content += ("\n</body></html>")
+                    else:
+                        content = entrycontent.strip() + "\n\nURL: " + link
+                        if hasattr(entry, 'enclosures'):
+                            for enclosure in entry.enclosures:
+                                if enclosure.url != "":
+                                    content += ('\nEnclosure: ' + enclosure.url + "\n")
+                        if 'links' in entry:
+                            for extralink in entry.links:
+                                if ('rel' in extralink) and extralink['rel'] == u'via':
+                                    content += '<a href="' + extralink['href'] + '">Via: ' + extralink[
+                                        'title'] + '</a>\n'
+
+                mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, attachments,
+                                  mailserver, folder=f.folder)
+
+                f.seen[frameid] = id
+
+            f.etag, f.modified = r.get('etag', None), r.get('modified', None)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except:
+            print >> warn, "=== rss2email encountered a problem with this feed ==="
+            print >> warn, "=== See the rss2email FAQ at http://www.allthingsrss.com/rss2email/ for assistance ==="
+            print >> warn, "=== If this occurs repeatedly, send this to lindsey@allthingsrss.com ==="
+            traceback.print_exc(file=warn)
+            print >> warn, "E: could not parse", f.url
+            print >> warn, "rss2email", __version__
+            print >> warn, "feedparser", feedparser.__version__
+            print >> warn, "html2text", h2t.__version__
+            print >> warn, "Python", sys.version
+            print >> warn, "=== END HERE ==="
+            continue
+    return mailserver
+
+
 def run(num=None):
     feeds, feedfileObject = load()
     mailserver = None
     try:
-        # We store the default to address as the first item in the feeds list.
-        # Here we take it out and save it for later.
-        default_to = ""
-        if feeds and isstr(feeds[0]): default_to = feeds[0]; ifeeds = feeds[1:] 
-        else: ifeeds = feeds
-        
-        if num: ifeeds = [feeds[num]]
-        feednum = 0
-        
-        for f in ifeeds:
-            try: 
-                feednum += 1
-                if not f.active: continue
-                
-                if VERBOSE: print >>warn, 'I: Processing [%d] "%s"' % (feednum, f.url)
-                r = {}
-                try:
-                    if hasattr(f, 'data'):
-                        r = timelimit(FEED_TIMEOUT, parse)(f.data, None, None)
-                        r.url = f.url
-                    else:
-                        r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
-                except TimeoutError:
-                    print >>warn, 'W: feed [%d] "%s" timed out' % (feednum, f.url)
-                    continue
-                
-                # Handle various status conditions, as required
-                if 'status' in r:
-                    if r.status == 301: f.url = r['url']
-                    elif r.status == 410:
-                        print >>warn, "W: feed gone; deleting", f.url
-                        feeds.remove(f)
-                        continue
-                
-                http_status = r.get('status', 200)
-                if VERBOSE > 1: print >>warn, "I: http status", http_status
-                http_headers = r.get('headers', {
-                  'content-type': 'application/rss+xml', 
-                  'content-length':'1'})
-                exc_type = r.get("bozo_exception", Exception()).__class__
-                if http_status != 304 and not r.entries and not r.get('version', ''):
-                    if http_status not in [200, 302]: 
-                        print >>warn, "W: error %d [%d] %s" % (http_status, feednum, f.url)
-
-                    elif contains(http_headers.get('content-type', 'rss'), 'html'):
-                        print >>warn, "W: looks like HTML [%d] %s"  % (feednum, f.url)
-
-                    elif http_headers.get('content-length', '1') == '0':
-                        print >>warn, "W: empty page [%d] %s" % (feednum, f.url)
-
-                    elif hasattr(socket, 'timeout') and exc_type == socket.timeout:
-                        print >>warn, "W: timed out on [%d] %s" % (feednum, f.url)
-                    
-                    elif exc_type == IOError:
-                        print >>warn, 'W: "%s" [%d] %s' % (r.bozo_exception, feednum, f.url)
-                    
-                    elif hasattr(feedparser, 'zlib') and exc_type == feedparser.zlib.error:
-                        print >>warn, "W: broken compression [%d] %s" % (feednum, f.url)
-                    
-                    elif exc_type in socket_errors:
-                        exc_reason = r.bozo_exception.args[1]
-                        print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
-
-                    elif exc_type == urllib2.URLError:
-                        if r.bozo_exception.reason.__class__ in socket_errors:
-                            exc_reason = r.bozo_exception.reason.args[1]
-                        else:
-                            exc_reason = r.bozo_exception.reason
-                        print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
-                    
-                    elif exc_type == AttributeError:
-                        print >>warn, "W: %s [%d] %s" % (r.bozo_exception, feednum, f.url)
-                    
-                    elif exc_type == KeyboardInterrupt:
-                        raise r.bozo_exception
-                        
-                    elif r.bozo:
-                        print >>warn, 'E: error in [%d] "%s" feed (%s)' % (feednum, f.url, r.get("bozo_exception", "can't process"))
-
-                    else:
-                        print >>warn, "=== rss2email encountered a problem with this feed ==="
-                        print >>warn, "=== See the rss2email FAQ at http://www.allthingsrss.com/rss2email/ for assistance ==="
-                        print >>warn, "=== If this occurs repeatedly, send this to lindsey@allthingsrss.com ==="
-                        print >>warn, "E:", r.get("bozo_exception", "can't process"), f.url
-                        print >>warn, r
-                        print >>warn, "rss2email", __version__
-                        print >>warn, "feedparser", feedparser.__version__
-                        print >>warn, "html2text", h2t.__version__
-                        print >>warn, "Python", sys.version
-                        print >>warn, "=== END HERE ==="
-                    continue
-                
-                r.entries.reverse()
-                
-                for entry in r.entries:
-                    id = getID(entry)
-                    
-                    # If TRUST_GUID isn't set, we get back hashes of the content.
-                    # Instead of letting these run wild, we put them in context
-                    # by associating them with the actual ID (if it exists).
-                    
-                    frameid = entry.get('id')
-                    if not(frameid): frameid = id
-                    if type(frameid) is DictType:
-                        frameid = frameid.values()[0]
-                    
-                    # If this item's ID is in our database
-                    # then it's already been sent
-                    # and we don't need to do anything more.
-                    
-                    if frameid in f.seen:
-                        if f.seen[frameid] == id: continue
-
-                    if not (f.to or default_to):
-                        print "No default email address defined. Please run 'r2e email emailaddress'"
-                        print "Ignoring feed %s" % f.url
-                        break
-                    
-                    if 'title_detail' in entry and entry.title_detail:
-                        title = entry.title_detail.value
-                        if contains(entry.title_detail.type, 'html'):
-                            title = html2text(title)
-                    else:
-                        title = getContent(entry)[:70]
-
-                    title = title.replace("\n", " ").strip()
-                    
-                    datetime = time.gmtime()
-
-                    if DATE_HEADER:
-                        for datetype in DATE_HEADER_ORDER:
-                            kind = datetype+"_parsed"
-                            if kind in entry and entry[kind]: datetime = entry[kind]
-                        
-                    link = entry.get('link', "")
-                    
-                    from_addr = getEmail(r, entry)
-                    
-                    name = h2t.unescape(getName(r, entry))
-                    fromhdr = formataddr((name, from_addr,))
-                    tohdr = (f.to or default_to)
-                    subjecthdr = title
-                    datehdr = time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime)
-                    useragenthdr = "rss2email"
-                    
-                    # Add post tags, if available
-                    tagline = ""
-                    if 'tags' in entry:
-                        tags = entry.get('tags')
-                        taglist = []
-                        if tags:
-                            for tag in tags:
-                                taglist.append(tag['term'])
-                        if taglist:
-                            tagline = ",".join(taglist)
-                    
-                    extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr, 'X-RSS-Feed': f.url, 'Message-ID': '<%s>' % hashlib.sha1(id.encode('utf-8')).hexdigest(), 'X-RSS-ID': id, 'X-RSS-URL': link, 'X-RSS-TAGS' : tagline, 'X-MUNGED-FROM': getMungedFrom(r), 'References': ''}
-                    if BONUS_HEADER != '':
-                        for hdr in BONUS_HEADER.strip().splitlines():
-                            pos = hdr.strip().find(':')
-                            if pos > 0:
-                                extraheaders[hdr[:pos]] = hdr[pos+1:].strip()
-                            else:
-                                print >>warn, "W: malformed BONUS HEADER", BONUS_HEADER 
-                    
-                    entrycontent = getContent(entry, HTMLOK=HTML_MAIL)
-                    contenttype = 'plain'
-                    content = ''
-                    attachments = []
-                    if THREAD_ON_TAGS and len(tagline):
-                        extraheaders['References'] += ''.join([' <%s>' % hashlib.sha1(t.strip().encode('utf-8')).hexdigest() for t in tagline.split(',')])
-                    if USE_CSS_STYLING and HTML_MAIL:
-                        contenttype = 'html'
-                        content = "<html>\n" 
-                        content += '<head><meta http-equiv="Content-Type" content="text/html"><style>' + STYLE_SHEET + '</style></head>\n'
-                        content += '<body style="word-wrap: break-word; -webkit-nbsp-mode: space; -webkit-line-break: after-white-space;">\n'
-                        content += '<div id="entry">\n'
-                        content += '<h1 class="header"'
-                        content += '><a href="'+link+'">'+subjecthdr+'</a></h1>\n'
-                        if ishtml(entrycontent):
-                            body = entrycontent[1].strip()
-                        else:
-                            body = entrycontent.strip()
-                        if THREAD_ON_LINKS:
-                            parser = Parser()
-                            parser.feed(body)
-                            extraheaders['References'] += ''.join([' <%s>' % hashlib.sha1(h.strip().encode('utf-8')).hexdigest() for h in parser.attrs])
-                        if IMAGES_AS_ATTACHMENTS or INLINE_IMAGES_DATA_URI:
-                            parser = Parser(tag='img', attr='src')
-                            parser.feed(body)
-                            for src in parser.attrs:
-                                try:
-                                    img = feedparser._open_resource(src, None, None, feedparser.USER_AGENT, link, [], {})
-                                    data = img.read()
-                                    if hasattr(img, 'headers'):
-                                        headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
-                                        ctype = headers.get('content-type', None)
-                                        if ctype:
-                                            if IMAGES_AS_ATTACHMENTS:
-                                                cid = "%d_%s" % (len(attachments), urlparse.urlsplit(img.url).path.split('/')[-1])
-                                                attachments.append((ctype, cid, data))
-                                                body = body.replace(src, 'cid:%s' % (cid,))
-                                            elif INLINE_IMAGES_DATA_URI:
-                                                body = body.replace(src,'data:%s;base64,%s' % (ctype, base64.b64encode(data)))
-                                except:
-                                    print >>warn, "Could not load image: %s" % src
-                                    pass
-                        if body != '':  
-                            content += '<div id="body">\n' + body + '</div>\n'
-                        content += '\n<p class="footer">URL: <a href="'+link+'">'+link+'</a>'
-                        if hasattr(entry,'enclosures'):
-                            for enclosure in entry.enclosures:
-                                if (hasattr(enclosure, 'url') and enclosure.url != ""):
-                                    content += ('<br/>Enclosure: <a href="'+enclosure.url+'">'+enclosure.url+"</a>\n")
-                                if (hasattr(enclosure, 'src') and enclosure.src != ""):
-                                    content += ('<br/>Enclosure: <a href="'+enclosure.src+'">'+enclosure.src+'</a><br/><img src="'+enclosure.src+'"\n')
-                        if 'links' in entry:
-                            for extralink in entry.links:
-                                if ('rel' in extralink) and extralink['rel'] == u'via':
-                                    extraurl = extralink['href']
-                                    extraurl = extraurl.replace('http://www.google.com/reader/public/atom/', 'http://www.google.com/reader/view/')
-                                    viatitle = extraurl
-                                    if ('title' in extralink):
-                                        viatitle = extralink['title']
-                                    content += '<br/>Via: <a href="'+extraurl+'">'+viatitle+'</a>\n'
-                        content += '</p></div>\n'
-                        content += "\n\n</body></html>"
-                    else:   
-                        if ishtml(entrycontent):
-                            contenttype = 'html'
-                            content = ("<html><body>\n\n" +
-                                       '<h1><a href="'+link+'">'+subjecthdr+'</a></h1>\n\n' +
-                                       entrycontent[1].strip() + # drop type tag (HACK: bad abstraction)
-                                       '<p>URL: <a href="'+link+'">'+link+'</a></p>' )
-                                       
-                            if hasattr(entry,'enclosures'):
-                                for enclosure in entry.enclosures:
-                                    if enclosure.url != "":
-                                        content += ('Enclosure: <a href="'+enclosure.url+'">'+enclosure.url+"</a><br/>\n")
-                            if 'links' in entry:
-                                for extralink in entry.links:
-                                    if ('rel' in extralink) and extralink['rel'] == u'via':
-                                        content += 'Via: <a href="'+extralink['href']+'">'+extralink['title']+'</a><br/>\n'
-                                                                
-                            content += ("\n</body></html>")
-                        else:
-                            content = entrycontent.strip() + "\n\nURL: "+link
-                            if hasattr(entry,'enclosures'):
-                                for enclosure in entry.enclosures:
-                                    if enclosure.url != "":
-                                        content += ('\nEnclosure: ' + enclosure.url + "\n")
-                            if 'links' in entry:
-                                for extralink in entry.links:
-                                    if ('rel' in extralink) and extralink['rel'] == u'via':
-                                        content += '<a href="'+extralink['href']+'">Via: '+extralink['title']+'</a>\n'
-
-                    mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, attachments, mailserver, f.folder)
-            
-                    f.seen[frameid] = id
-                    
-                f.etag, f.modified = r.get('etag', None), r.get('modified', None)
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except:
-                print >>warn, "=== rss2email encountered a problem with this feed ==="
-                print >>warn, "=== See the rss2email FAQ at http://www.allthingsrss.com/rss2email/ for assistance ==="
-                print >>warn, "=== If this occurs repeatedly, send this to lindsey@allthingsrss.com ==="
-                print >>warn, "E: could not parse", f.url
-                traceback.print_exc(file=warn)
-                print >>warn, "rss2email", __version__
-                print >>warn, "feedparser", feedparser.__version__
-                print >>warn, "html2text", h2t.__version__
-                print >>warn, "Python", sys.version
-                print >>warn, "=== END HERE ==="
-                continue
-
-    finally:        
+        mailserver = process_feeds(feeds, num)
+    finally:
         unlock(feeds, feedfileObject)
         if mailserver:
             if IMAP_MOVE_READ_TO:

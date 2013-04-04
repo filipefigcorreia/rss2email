@@ -62,7 +62,7 @@ def import_history(emailaddress, username, password):
             if not continuation_code:
                 print ""
                 break
-    #process_feeds([emailaddress] + feeds)
-    raise Exception("process_feeds() is not implemented yet.")
+    process_feeds([emailaddress] + feeds)
+
 
     if VERBOSE: print ""
