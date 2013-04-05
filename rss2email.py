@@ -397,7 +397,7 @@ def getMungedFrom(r, entry):
     hparser = HTMLParser()
     title_long = source.get("title", 'Unnamed Feed')
     title_long = hparser.unescape(title_long)
-    title_long = title_long.replace('"', '`').replace("'", '`')
+    title_long = title_long.replace('"', '`').replace("'", '`').replace("\n", " ")
     title_short = source.get("title", 'unknown')
     title_short = hparser.unescape(title_short).lower()
     title_short = unicodedata.normalize('NFKD', title_short).encode('ascii','ignore')
