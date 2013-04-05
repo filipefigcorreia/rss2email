@@ -65,7 +65,32 @@ class FeedCache(object):
         shutil.rmtree(self._cache_path)
         os.makedirs(self._cache_path)
 
-def import_history(emailaddress, username, password, use_cache=False):
+class ProgressLog(object):
+    def __init__(self):
+        self._plog_filename = path.join(WORK_DIR, "progress.log")
+        dirname = path.dirname(self._plog_filename)
+        if not path.isdir(dirname):
+            os.makedirs(dirname)
+
+    def _exists(self):
+        return os.path.isfile(self._plog_filename)
+
+    def reset(self):
+        if self._exists():
+            os.remove(self._plog_filename)
+
+    def append(self, url):
+        with open(self._plog_filename, "a") as plog:
+            plog.write(url)
+            plog.write("\n")
+
+    def get_urls(self):
+        if not self._exists(): return []
+        with open(self._plog_filename, "r") as plog:
+            plog_str = plog.read()
+        return plog_str.splitlines()
+
+def import_history(emailaddress, username, password, use_cache=False, resume=False):
     auth = ClientAuthMethod(username, password)
     reader = GoogleReader(auth)
     userinfo = reader.getUserInfo()
@@ -87,8 +112,10 @@ def import_history(emailaddress, username, password, use_cache=False):
     if not use_cache and cache.get_count()>0:
         cache.reset()
 
+    plog = ProgressLog()
     if cache.get_count() == 0:
         if VERBOSE: print "Caching feed items..."
+        plog.reset() # an existing progress log is not reliable after rebuilding the cache
         for cat in cats:
             continuation_code = None
             url = cat_url_template.format(userId, cat)
@@ -107,7 +134,24 @@ def import_history(emailaddress, username, password, use_cache=False):
                 if not continuation_code:
                     if VERBOSE: print ""
                     break
+        if VERBOSE: print "Cache build."
 
-    if VERBOSE: print "Loading {0} feed parts from cache".format(cache.get_count())
-    for feed in cache.get_items():
-        process_feeds(emailaddress, [feed])
+    if VERBOSE: print "\nLoading {0} feed parts from cache ...".format(cache.get_count())
+    imported_urls = plog.get_urls()
+    if VERBOSE: print "... of which {0} were already imported and will be ignored.".format(len(imported_urls))
+    if VERBOSE: print ""
+    mailserver = None
+    try:
+        for feed in cache.get_items():
+            if feed.url in imported_urls:
+                if VERBOSE: print "Skipping. Already imported {0}".format(feed.url)
+                continue
+            def report_progress(feed):
+                plog.append(feed.url)
+            mailserver = process_feeds(emailaddress, [feed], report_progress)
+    finally:
+        if mailserver:
+            try: mailserver.quit()
+            except: mailserver.logout()
+
+

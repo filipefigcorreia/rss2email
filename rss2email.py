@@ -554,7 +554,7 @@ def uid(data):
     return m.group('uid')
 
 
-def process_feeds(default_to, feeds):
+def process_feeds(default_to, feeds, progress_callback = None):
     """
     Parses the feeds, builds the email messages, and sends them.
     """
@@ -837,6 +837,9 @@ def process_feeds(default_to, feeds):
                 f.seen[frameid] = id
 
             f.etag, f.modified = r.get('etag', None), r.get('modified', None)
+
+            if progress_callback:
+                progress_callback(f)
         except (KeyboardInterrupt, SystemExit):
             raise
         except:
@@ -954,9 +957,9 @@ def opmlimport(importfile):
             
     unlock(feeds, feedfileObject)
 
-def greaderimport(emailaddress, username, password, use_cache):
+def greaderimport(emailaddress, username, password, use_cache, resume):
     from getgreader import import_history
-    import_history(emailaddress, username, password, use_cache)
+    import_history(emailaddress, username, password, use_cache, resume)
 
 def delete(n):
     feeds, feedfileObject = load()
@@ -1064,10 +1067,17 @@ if __name__ == '__main__':
                 raise InputError, "GReader import '%s' requires an email and a username arguments" % action
             emailaddress = args[0]
             username = args[1]
+            use_cache = False
+            resume = False
+            if len(args) > 2:
+                optional_args = args[2:]
+                use_cache = "--use-cache" in optional_args
+                resume = "--resume" in optional_args
+            if resume and not use_cache:
+                raise InputError, "Action '%s' can only resume from cached feeds. Please use the --use-cache switch." % action
             import getpass
             password = getpass.getpass("Please enter password for '{0}':".format(username))
-            use_cache = (len(args) > 2 and args[2] == "--use-cache")
-            greaderimport(emailaddress, username, password, use_cache)
+            greaderimport(emailaddress, username, password, use_cache, resume)
 
         else:
             raise InputError, "Invalid action"
