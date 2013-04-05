@@ -163,8 +163,9 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
         if not folder:
             folder = 'INBOX'
         #mailserver.debug = 4
+        folder = mailserver._quote(folder)
         if mailserver.select(folder)[0] == 'NO':
-            print >>warn, ("%s does not exist, creating" % folder)
+            print >>warn, ("%s mailbox does not exist, creating." % folder)
             mailserver.create(folder)
             mailserver.subscribe(folder)
         mailserver.append(folder,'',imaplib.Time2Internaldate(datetime), msg_as_string)
