@@ -14,7 +14,7 @@ Usage:
   unpause n
   opmlexport
   opmlimport filename
-  greaderimport emailaddress googleusername
+  greaderimport emailaddress googleusername [--use-cache]
 """
 __version__ = "2.71-rcarmo"
 __author__ = "Lindsey Smith (lindsey@allthingsrss.com)"
@@ -958,9 +958,9 @@ def opmlimport(importfile):
             
     unlock(feeds, feedfileObject)
 
-def greaderimport(emailaddress, username, password):
+def greaderimport(emailaddress, username, password, use_cache):
     from getgreader import import_history
-    import_history(emailaddress, username, password)
+    import_history(emailaddress, username, password, use_cache)
 
 def delete(n):
     feeds, feedfileObject = load()
@@ -1064,13 +1064,14 @@ if __name__ == '__main__':
             opmlimport(args[0])
 
         elif action == "greaderimport":
-            if not args or not len(args) == 2:
+            if not args or not len(args) >= 2:
                 raise InputError, "GReader import '%s' requires an email and a username arguments" % action
             emailaddress = args[0]
             username = args[1]
             import getpass
             password = getpass.getpass("Please enter password for '{0}':".format(username))
-            greaderimport(emailaddress, username, password)
+            use_cache = (len(args) > 2 and args[2] == "--use-cache")
+            greaderimport(emailaddress, username, password, use_cache)
 
         else:
             raise InputError, "Invalid action"

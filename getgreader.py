@@ -56,7 +56,11 @@ class FeedCache(object):
             if not path.exists(rand_filename): break
         pickle.dump(feed, open(rand_filename, 'w'))
 
-def import_history(emailaddress, username, password):
+    def reset(self):
+        import shutil
+        shutil.rmtree(self.cache_path)
+
+def import_history(emailaddress, username, password, use_cache=False):
     auth = ClientAuthMethod(username, password)
     reader = GoogleReader(auth)
     userinfo = reader.getUserInfo()
@@ -75,8 +79,10 @@ def import_history(emailaddress, username, password):
     cat_url_params = {'n': 250} # TODO: make the batch size a config option
 
     cache = FeedCache()
-    feed_parts_count = cache.get_count()
-    if feed_parts_count == 0:
+    if not use_cache and cache.get_count()>0:
+        cache.reset()
+
+    if cache.get_count() == 0:
         if VERBOSE: print "Caching feed items..."
         for cat in cats:
             continuation_code = None
