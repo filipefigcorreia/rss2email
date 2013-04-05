@@ -124,10 +124,7 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
     else:
         msg['From'] = fromhdr
 
-    try:
-        msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
-    except UnicodeDecodeError, e:
-        pass
+    msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
 
     for ctype, cid, data in attachments:
         part = MIMEBase(*ctype.split("/"))
@@ -783,15 +780,13 @@ def process_feeds(default_to, feeds):
                                     viatitle = extralink['title']
                                 extrafooter += u'<br/>Via: <a href="{0}">{1}</a>\n'.format(extraurl, viatitle)
 
-                    try:
-                        content = template.format(
-                            stylesheet=STYLE_SHEET,
-                            url=link,
-                            title=subjecthdr,
-                            body=body,
-                            extrafooter=extrafooter)
-                    except UnicodeEncodeError, e:
-                        pass
+                    content = template.format(
+                        stylesheet=STYLE_SHEET,
+                        url=link,
+                        title=subjecthdr,
+                        body=body,
+                        extrafooter=extrafooter)
+
                 else:
                     if ishtml(entrycontent):
                         contenttype = 'html'
