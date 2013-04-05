@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from os import path, makedirs, listdir
+import sys
 import re
 import uuid
 import urllib
@@ -59,6 +60,7 @@ class FeedCache(object):
     def reset(self):
         import shutil
         shutil.rmtree(self.cache_path)
+        makedirs(self.cache_path)
 
 def import_history(emailaddress, username, password, use_cache=False):
     auth = ClientAuthMethod(username, password)
