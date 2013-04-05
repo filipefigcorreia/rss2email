@@ -91,7 +91,9 @@ def import_history(emailaddress, username, password, use_cache=False):
             url = cat_url_template.format(userId, cat)
             if VERBOSE: print "Fetching feed items for category '{0}' (url: {1})".format(cat, url)
             while True:
-                if VERBOSE: print ".",
+                if VERBOSE:
+                    print ".",
+                    sys.stdout.flush()
                 if continuation_code:
                     full_params = dict(cat_url_params, **{'c':continuation_code})
                 else: full_params = cat_url_params
