@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from os import path, makedirs, listdir
+import os
+from os import path
 import sys
 import re
 import uuid
@@ -12,6 +13,9 @@ try:
     from config import *
 except:
     pass
+
+# TODO: make this an option in the config file
+WORK_DIR = path.join(path.expanduser("~"), ".rss2email/greaderimport/")
 
 class RetrievedFeed(Feed):
     def __init__(self, data, url, to, folder=None):
@@ -33,15 +37,14 @@ def get_feed_data(gr_feed_url, auth):
 
 class FeedCache(object):
     def __init__(self):
-        # TODO: make this path a config option
-        self.cache_path = path.join(path.expanduser("~"), ".rss2email/greaderimport_cache/")
-        if not path.isdir(self.cache_path):
-            makedirs(self.cache_path)
+        self._cache_path = path.join(WORK_DIR, "cache/")
+        if not path.isdir(self._cache_path):
+            os.makedirs(self._cache_path)
 
     def _get_cache_filenames(self):
-        if not path.isdir(self.cache_path):
+        if not path.isdir(self._cache_path):
             return []
-        filenames = [path.join(self.cache_path, name) for name in listdir(self.cache_path)]
+        filenames = [path.join(self._cache_path, name) for name in os.listdir(self._cache_path)]
         return [filename for filename in filenames if path.isfile(filename)]
 
     def get_count(self):
@@ -53,14 +56,14 @@ class FeedCache(object):
 
     def add(self, feed):
         while True: # generate short uuid for filename
-            rand_filename = path.join(self.cache_path, str(uuid.uuid4())[0:8])
+            rand_filename = path.join(self._cache_path, str(uuid.uuid4())[0:8])
             if not path.exists(rand_filename): break
         pickle.dump(feed, open(rand_filename, 'w'))
 
     def reset(self):
         import shutil
-        shutil.rmtree(self.cache_path)
-        makedirs(self.cache_path)
+        shutil.rmtree(self._cache_path)
+        os.makedirs(self._cache_path)
 
 def import_history(emailaddress, username, password, use_cache=False):
     auth = ClientAuthMethod(username, password)
