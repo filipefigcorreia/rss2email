@@ -92,6 +92,9 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
         else:
             break
 
+    if IMAP_MUNGE_FROM:
+        sender = extraheaders['X-MUNGED-FROM']
+
     # Split real name (which is optional) and email address parts
     sender_name, sender_addr = parseaddr(sender)
     recipient_name, recipient_addr = parseaddr(recipient)
@@ -119,10 +122,7 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
             msg[hdr] = Header(extraheaders[hdr])
         
     fromhdr = formataddr((sender_name, sender_addr))
-    if IMAP_MUNGE_FROM:
-        msg['From'] = extraheaders['X-MUNGED-FROM']
-    else:
-        msg['From'] = fromhdr
+    msg['From'] = fromhdr
 
     msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
 
@@ -400,15 +400,14 @@ def getMungedFrom(r, entry):
     hparser = HTMLParser()
     title_long = source.get("title", 'Unnamed Feed')
     title_long = hparser.unescape(title_long)
-    title_long = title_long.replace('"', '`').replace("'", '`').replace("\n", " ")
+    title_long = title_long.replace('"', '`').replace("'", '`').replace("\n", " ").replace(",", "")
     title_short = source.get("title", 'unknown')
     title_short = hparser.unescape(title_short).lower()
     title_short = unicodedata.normalize('NFKD', title_short).encode('ascii','ignore')
     pattern = re.compile('[\W_]+',re.UNICODE)
     title_short = re.sub(pattern, '_', title_short).strip("_")
 
-    from_txt = u"{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
-    return from_txt.encode("utf-8")
+    return u"{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
 
 
 def validateEmail(email, planb):
