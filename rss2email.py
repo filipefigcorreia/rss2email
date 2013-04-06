@@ -127,7 +127,10 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
     msg.attach(MIMEText(body.encode(body_charset), contenttype, body_charset))
 
     for ctype, cid, data in attachments:
-        part = MIMEBase(*ctype.split("/"))
+        ctype_parts = ctype.split("/")
+        if len(ctype_parts)>2:
+            if VERBOSE: print "Warning, suspicious content-type '{0}'".format(ctype)
+        part = MIMEBase(*ctype_parts[:2])
         part.set_payload(data)
         Encoders.encode_base64(part)
         part.add_header('Content-Disposition', 'attachment; filename="%s"' % (cid,))
@@ -553,6 +556,21 @@ def uid(data):
     m = re.match('\d+ \(UID (?P<uid>\d+)\)', data)
     return m.group('uid')
 
+def cleanup_ctype(ctype):
+    if ctype is None: return None
+    regex = re.compile("[\w\+\-\.]+\/[\w\+\-\.]+")
+    r = regex.findall(ctype)
+    if len(r) == 0:
+        ctype = None
+    elif len(r) == 1:
+        ctype = r[0]
+    elif len(r) > 1:
+        ictypes = [x for x in r if "image" in x]
+        if len(ictypes) > 0:
+            ctype = ictypes[0]
+        else:
+            ctype = r[0]
+    return ctype
 
 def process_feeds(default_to, feeds, progress_callback = None):
     """
@@ -751,6 +769,7 @@ def process_feeds(default_to, feeds, progress_callback = None):
                                 if hasattr(img, 'headers'):
                                     headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
                                     ctype = headers.get('content-type', None)
+                                    ctype = cleanup_ctype(ctype)
                                     if ctype:
                                         if IMAGES_AS_ATTACHMENTS:
                                             cid = "%d_%s" % (
