@@ -763,21 +763,28 @@ def process_feeds(default_to, feeds, progress_callback = None):
                         parser.feed(body)
                         for src in parser.attrs:
                             try:
-                                img = feedparser._open_resource(src, None, None, feedparser.USER_AGENT, link, [], {})
-                                data = img.read()
-                                if hasattr(img, 'headers'):
-                                    headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
-                                    ctype = headers.get('content-type', None)
+                                try:
+                                    img = feedparser._open_resource(src, None, None, feedparser.USER_AGENT, link, [], {})
+                                    if hasattr(img, 'headers'):
+                                        img_headers = dict((k.lower(), v) for k, v in dict(img.headers).items())
+                                    else: img_headers = None
+                                    img_data = img.read()
+                                except:
+                                    if not TRY_WBM_FOR_LOST_IMAGES: raise
+                                    if VERBOSE: print "Trying archive.org: {0}".format(src)
+                                    import waybackmachine
+                                    img_headers, img_data = waybackmachine.get_file(src, feedparser.USER_AGENT, link)
+                                if img_headers:
+                                    ctype = img_headers.get('content-type', None)
                                     ctype = cleanup_ctype(ctype)
                                     if ctype:
                                         if IMAGES_AS_ATTACHMENTS:
                                             cid = "%d_%s" % (
-                                                len(attachments), urlparse.urlsplit(img.url).path.split('/')[-1])
-                                            attachments.append((ctype, cid, data))
+                                                len(attachments), urlparse.urlsplit(src).path.split('/')[-1])
+                                            attachments.append((ctype, cid, img_data))
                                             body = body.replace(src, 'cid:%s' % (cid,))
                                         elif INLINE_IMAGES_DATA_URI:
-                                            body = body.replace(src,
-                                                                'data:%s;base64,%s' % (ctype, base64.b64encode(data)))
+                                            body = body.replace(src, 'data:%s;base64,%s' % (ctype, base64.b64encode(img_data)))
                             except:
                                 print >> warn, "Could not load image: %s" % src
                                 pass

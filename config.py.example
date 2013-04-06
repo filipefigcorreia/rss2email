@@ -78,6 +78,11 @@ IMAGES_AS_ATTACHMENTS = 0
 # Include inline images as a data: URI (not supported in MUAs like the mobile Gmail app, but works great on iOS and Mac)
 INLINE_IMAGES_DATA_URI = 0
 
+# Try to fetch images that are no longer available in their original
+# URLs from archive.org (aka, way back machine)
+# Useful when importing old feeds with the greader importer.
+TRY_WBM_FOR_LOST_IMAGES = 1
+
 # Move read messages to a specific folder
 IMAP_MOVE_READ_TO = False
 
