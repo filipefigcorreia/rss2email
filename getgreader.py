@@ -14,6 +14,11 @@ try:
 except:
     pass
 
+# Google reader adds its own categories/tags (e.g., there's a "read" tag applied to all read items)
+# Threading on tags is not very useful in this case, so it's better to make sure it's switched off.
+THREAD_ON_TAGS = 0
+
+
 # TODO: make this an option in the config file
 WORK_DIR = path.join(path.expanduser("~"), ".rss2email/greaderimport/")
 
