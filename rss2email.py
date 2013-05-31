@@ -45,6 +45,7 @@ from email.mime.base import MIMEBase
 from email.header import Header
 from email.utils import parseaddr, formataddr
 from email import Encoders
+import codecs
              
 import feedparser
 feedparser.USER_AGENT = "rss2email/"+__version__+ " +https://github.com/rcarmo/rss2email"
@@ -103,10 +104,10 @@ def send(sender, recipient, subject, body, contenttype, datetime, extraheaders=N
     # use RFC 2047 encoding even on plain ASCII strings.
     sender_name = str(Header(unicode(sender_name), header_charset))
     recipient_name = str(Header(unicode(recipient_name), header_charset))
-    
+
     # Make sure email addresses do not contain non-ASCII characters
-    sender_addr = sender_addr.encode('ascii')
-    recipient_addr = recipient_addr.encode('ascii')
+    sender_addr = sender_addr.encode('ascii', 'replace')
+    recipient_addr = recipient_addr.encode('ascii', 'replace')
     
     # Create the message ('plain' stands for Content-Type: text/plain)
     msg = MIMEMultipart()
