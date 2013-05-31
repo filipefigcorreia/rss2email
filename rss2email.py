@@ -808,6 +808,8 @@ def process_feeds(default_to, feeds, progress_callback = None):
 
                     content = template.format(
                         stylesheet=STYLE_SHEET,
+                        style_body=STYLE_BODY,
+                        style_h1_header=STYLE_H1_HEADER,
                         url=link,
                         title=subjecthdr,
                         body=body,
