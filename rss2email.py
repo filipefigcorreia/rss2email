@@ -16,12 +16,13 @@ Usage:
   opmlimport filename
   greaderimport emailaddress googleusername [--use-cache]
 """
-__version__ = "2.71-rcarmo"
+__version__ = "2.71-fcorreia"
 __author__ = "Lindsey Smith (lindsey@allthingsrss.com)"
 __copyright__ = "(C) 2004 Aaron Swartz. GNU GPL 2 or 3."
 ___contributors__ = ["Dean Jackson", "Brian Lalor", "Joey Hess", 
                      "Matej Cepl", "Martin 'Joey' Schulze", 
-                     "Marcel Ackermann (http://www.DreamFlasher.de)", 
+                     "Marcel Ackermann (http://www.DreamFlasher.de)",
+                     "Filipe Correia (http://inivisvel.net)",
                      "Rui Carmo (http://the.taoofmac.com)",
                      "Lindsey Smith (maintainer)", "Erik Hetzner",
                      "Aaron Swartz (original author)" ]
