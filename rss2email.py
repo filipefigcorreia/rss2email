@@ -861,9 +861,8 @@ def process_feeds(default_to, feeds, progress_callback = None):
                         )
 
                 try:
-                    mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime,
-                                      extraheaders, attachments, mailserver, folder=f.folder)
-                f.seen[frameid] = id
+                    mailserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, datetime, extraheaders, attachments, mailserver, folder=f.folder)
+                    f.seen[frameid] = id
                 except:
                     traceback.print_exc(file=warn)
                     print >> warn, "E: could not send feed item. From: {0}; To: {1}; Subject:{2}".format(fromhdr, tohdr, subjecthdr)
