@@ -865,7 +865,7 @@ def process_feeds(default_to, feeds, progress_callback = None):
                     f.seen[frameid] = id
                 except:
                     traceback.print_exc(file=warn)
-                    print >> warn, "E: could not send feed item. From: {0}; To: {1}; Subject:{2}".format(fromhdr, tohdr, subjecthdr)
+                    print >> warn, "E: could not send feed item. From: {0}; To: {1}; Subject:{2}".format(fromhdr.encode('ascii', 'replace'), tohdr.encode('ascii', 'replace'), subjecthdr.encode('ascii', 'replace'))
                     print >> warn, "rss2email", __version__
 
             f.etag, f.modified = r.get('etag', None), r.get('modified', None)
