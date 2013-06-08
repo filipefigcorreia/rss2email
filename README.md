@@ -27,6 +27,7 @@ The Gmail app ignores CSS and may have weird behaviors with long bits of text, t
 * Can (optionally) include images inline (as `data:` URIs for now -- which only works properly on iOS/Mac -- soon as MIME attachments) or as attachments (which works with most MUAs)
 * Can (optionally) remove read (but not flagged) items automatically
 * Tries to retrieve broken image links of old feed items from archive.org
+* Tries to figure out the folder when importing from an OPML file (only tested with GReader exported OPML files)
 
 ## Google Reader import
 

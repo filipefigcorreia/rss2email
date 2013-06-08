@@ -984,8 +984,11 @@ def opmlimport(importfile):
     for f in newfeeds:
         if f.hasAttribute('xmlUrl'):
             feedurl = f.getAttribute('xmlUrl')
-            print 'Adding %s' % xml.sax.saxutils.unescape(feedurl)
-            feeds.append(Feed(feedurl, None))
+            folder = None
+            if f.parentNode.localName == 'outline':
+                folder = f.parentNode.getAttribute('title')
+            print 'Adding %s (Folder: "%s")' % (xml.sax.saxutils.unescape(feedurl), folder)
+            feeds.append(Feed(feedurl, None, folder))
             
     unlock(feeds, feedfileObject)
 
