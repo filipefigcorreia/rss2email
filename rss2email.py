@@ -394,7 +394,7 @@ def getMungedFrom(r, entry):
 
     if hasattr(entry, "source"): # item source takes precedence over feed source
         source = entry.source
-        url = entry.source.get("link")
+        url = entry.source.get("link") or entry.source.get("href")
     else:
         source = r.feed
         url = r.url
