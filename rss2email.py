@@ -409,7 +409,13 @@ def getMungedFrom(r, entry):
     pattern = re.compile('[\W_]+',re.UNICODE)
     title_short = re.sub(pattern, '_', title_short).strip("_")
 
-    return u"{0} <{1}@{2}>".format(title_long, title_short, urlparse.urlparse(url).netloc)
+    try:
+        domain = urlparse.urlparse(url).netloc
+    except:
+        print >> warn, 'E: Could not parse url "{0}"'.format(url)
+        raise
+    
+    return u"{0} <{1}@{2}>".format(title_long, title_short, domain)
 
 
 def validateEmail(email, planb):
