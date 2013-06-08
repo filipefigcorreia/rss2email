@@ -3,7 +3,7 @@ rss2imap
 
 An adaptation of rss2email that uses IMAP directly, extended to import historic feed items from google reader.
 
-# What does it look like?
+## What does it look like?
 
 Well, with the shipping CSS in `config.py`, it looks like this:
 
