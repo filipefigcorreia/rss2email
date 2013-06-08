@@ -95,7 +95,7 @@ class ProgressLog(object):
             plog_str = plog.read()
         return plog_str.splitlines()
 
-def import_history(emailaddress, username, password, use_cache=False, resume=False):
+def import_history(emailaddress, username, password, use_cache=False, resume=False, since_date=False):
     auth = ClientAuthMethod(username, password)
     reader = GoogleReader(auth)
     userinfo = reader.getUserInfo()
@@ -112,6 +112,11 @@ def import_history(emailaddress, username, password, use_cache=False, resume=Fal
 
     cat_url_template = "http://www.google.com/reader/atom/user/{0}/label/{1}"
     cat_url_params = {'n': 250} # TODO: make the batch size a config option
+
+    since_date_unix = None
+    if since_date:
+        import time, datetime
+        since_date_unix = str(int(time.mktime(datetime.datetime.strptime(since_date, "%Y%m%d").timetuple())))
 
     cache = FeedCache()
     if not use_cache and cache.get_count()>0:
@@ -132,6 +137,8 @@ def import_history(emailaddress, username, password, use_cache=False, resume=Fal
                 if continuation_code:
                     full_params = dict(cat_url_params, **{'c':continuation_code})
                 else: full_params = cat_url_params
+                if since_date_unix:
+                    full_params = dict(full_params, **{'ot':since_date_unix})
 
                 full_url = url + "?" + urllib.urlencode(full_params)
                 data, continuation_code = get_feed_data(full_url, auth)

@@ -992,9 +992,9 @@ def opmlimport(importfile):
             
     unlock(feeds, feedfileObject)
 
-def greaderimport(emailaddress, username, password, use_cache, resume):
+def greaderimport(emailaddress, username, password, use_cache, resume, since_date):
     from getgreader import import_history
-    import_history(emailaddress, username, password, use_cache, resume)
+    import_history(emailaddress, username, password, use_cache, resume, since_date)
 
 def delete(n):
     feeds, feedfileObject = load()
@@ -1104,15 +1104,19 @@ if __name__ == '__main__':
             username = args[1]
             use_cache = False
             resume = False
+            since_date = None
             if len(args) > 2:
                 optional_args = args[2:]
                 use_cache = "--use-cache" in optional_args
                 resume = "--resume" in optional_args
+                uses_since_date = "--since-date" in optional_args
+                if uses_since_date:
+                    since_date = optional_args[optional_args.index('--since-date')+1]
             if resume and not use_cache:
                 raise InputError, "Action '%s' can only resume from cached feeds. Please use the --use-cache switch." % action
             import getpass
             password = getpass.getpass("Please enter password for '{0}':".format(username))
-            greaderimport(emailaddress, username, password, use_cache, resume)
+            greaderimport(emailaddress, username, password, use_cache, resume, since_date)
 
         else:
             raise InputError, "Invalid action"

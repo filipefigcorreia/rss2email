@@ -34,6 +34,7 @@ The Gmail app ignores CSS and may have weird behaviors with long bits of text, t
 * Imports all feed items from a supplied google reader account
 * Stores feed items retrieved from google reader on a filesystem-based cache that is recreated on each run, except if the --use-cache switch is used.
 * Tracks progress of which feed items in the cache were already imported, and is able to resume where it left off when the --use-cache switch is used (useful to recover interrupted imports)
+* Ability to import from GReader only since a specific date using the --since-date option
 
 ### Caveats
 
